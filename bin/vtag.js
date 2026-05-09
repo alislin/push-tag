@@ -1,18 +1,17 @@
 #!/usr/bin/env node
 import { program } from 'commander';
-import chalk from 'chalk';
 import Vtag from '../src/index.js';
 
 program
   .name('vtag')
-  .description('CLI tool for automatic version bumping, git tag creation and npm publishing')
+  .description('CLI tool for automatic version bumping, git branch merge and tag creation')
   .version('1.0.0')
   .argument('[version]', 'version bump type (patch/minor/major) or specific version number')
   .option('-p, --patch', 'bump patch version')
   .option('-m, --minor', 'bump minor version')
   .option('-M, --major', 'bump major version')
-  .option('-t, --push-tag', 'push tag to remote (default: false)')
-  .option('-P, --no-publish', 'skip npm publish')
+  .option('-t, --push-tag', 'create and push tag to remote')
+  .option('-n, --no-push', 'disable push (branches and tags)')
   .option('-d, --dry-run', 'preview without executing')
   .option('--dev-branch <name>', 'development branch name')
   .option('--main-branch <name>', 'main/production branch name')
@@ -31,7 +30,7 @@ program
     const config = {
       version: bumpType || version || null,
       pushTag: options.pushTag || false,
-      publish: !options.noPublish,
+      noPush: options.noPush || false,
       dryRun: options.dryRun || false,
       devBranch: options.devBranch,
       mainBranch: options.mainBranch
@@ -41,7 +40,7 @@ program
       const vtag = new Vtag(config);
       await vtag.run();
     } catch (error) {
-      console.error(chalk.red(`Error: ${error.message}`));
+      console.error(`\x1b[31mError: ${error.message}\x1b[0m`);
       process.exit(1);
     }
   });

@@ -1,10 +1,7 @@
-import chalk from 'chalk';
 import path from 'path';
-import { readFileSync } from 'fs';
 import { loadConfig } from './config.js';
 import version from './version.js';
 import git from './git.js';
-import npm from './npm.js';
 
 class Vtag {
   constructor(cliOptions = {}) {
@@ -15,149 +12,175 @@ class Vtag {
     this.currentVersion = null;
     this.newVersion = null;
     this.tagName = null;
+    this.originalBranch = null;
   }
 
   async run() {
     this.config = loadConfig(this.cwd, this.cliOptions);
     
     if (this.config.dryRun) {
-      console.log(chalk.yellow('🔍 DRY RUN MODE - No changes will be made\n'));
+      console.log('\x1b[33m🔍 DRY RUN MODE - No changes will be made\x1b[0m\n');
     }
     
     this.printConfig();
     
-    this.currentVersion = version.getCurrentVersion(this.packagePath);
-    console.log(chalk.blue(`Current version: ${this.currentVersion}`));
+    this.originalBranch = git.getCurrentBranch();
     
-    this.newVersion = version.resolveVersion(this.packagePath, this.config.version);
-    this.tagName = `v${this.newVersion}`;
-    
-    if (this.newVersion === this.currentVersion && this.config.version) {
-      console.log(chalk.yellow('No version change requested.'));
-    } else if (this.newVersion !== this.currentVersion) {
-      console.log(chalk.green(`New version: ${this.newVersion}`));
+    if (!git.isAllowedBranch(this.originalBranch, this.config.devBranch, this.config.mainBranch)) {
+      console.log(`\x1b[31m当前分支 '${this.originalBranch}' 不合法，请在 '${this.config.devBranch}' 或 '${this.config.mainBranch}' 分支执行此命令\x1b[0m`);
+      process.exit(1);
     }
-    console.log(`Tag: ${this.tagName}\n`);
     
-    this.validateGitState();
+    if (!git.isStatusClear()) {
+      console.log(`\x1b[31m当前分支 '${this.originalBranch}' 有未提交的更改，请先提交或暂存后再执行\x1b[0m`);
+      process.exit(1);
+    }
     
-    if (git.tagExists(this.tagName)) {
-      console.log(chalk.red(`Tag ${this.tagName} already exists. Aborting.`));
+    const versionInfo = version.resolveVersion(this.packagePath, this.config.version);
+    this.currentVersion = versionInfo.currentVersion;
+    this.newVersion = versionInfo.newVersion;
+    this.tagName = `v${this.newVersion || this.currentVersion}`;
+    
+    console.log(`\x1b[36mCurrent version: ${this.currentVersion}\x1b[0m`);
+    if (versionInfo.changed) {
+      console.log(`\x1b[32mNew version: ${this.newVersion}\x1b[0m`);
+    }
+    if (this.config.pushTag) {
+      console.log(`\x1b[36mTag: ${this.tagName}\x1b[0m`);
+    }
+    console.log('');
+    
+    if (this.config.pushTag && git.tagExists(this.tagName)) {
+      console.log(`\x1b[31mTag '${this.tagName}' 已存在\x1b[0m`);
       process.exit(1);
     }
     
     if (this.config.dryRun) {
-      this.printDryRunSteps();
+      this.printDryRunSteps(versionInfo.changed);
       return;
     }
     
-    await this.executeRelease();
+    await this.execute(versionInfo.changed);
   }
 
   printConfig() {
-    console.log(chalk.bold('\nConfiguration:'));
+    console.log('\x1b[1mConfiguration:\x1b[0m');
+    console.log(`  Current branch: ${this.originalBranch || 'detecting...'}`);
     console.log(`  Dev branch: ${this.config.devBranch}`);
     console.log(`  Main branch: ${this.config.mainBranch}`);
     console.log(`  Push tag: ${this.config.pushTag}`);
-    console.log(`  NPM publish: ${this.config.publish}`);
+    console.log(`  No push: ${this.config.noPush}`);
     console.log('');
   }
 
-  validateGitState() {
-    console.log(chalk.blue('Checking git status...'));
-    git.checkGitStatus();
-    console.log(chalk.green('✓ Working directory is clean\n'));
-  }
-
-  printDryRunSteps() {
-    console.log(chalk.bold('\nDry run - steps that would be executed:'));
-    const steps = this.getExecutionSteps();
+  printDryRunSteps(versionChanged) {
+    console.log('\x1b[1mDry run - steps that would be executed:\x1b[0m');
+    const steps = this.getExecutionSteps(versionChanged);
     steps.forEach((step, i) => {
       console.log(`  ${i + 1}. ${step}`);
     });
   }
 
-  getExecutionSteps() {
+  getExecutionSteps(versionChanged) {
     const steps = [];
-    const { devBranch, mainBranch, pushTag, publish } = this.config;
+    const { devBranch, mainBranch, pushTag, noPush } = this.config;
+    const fromDev = this.originalBranch === devBranch;
     
-    if (this.newVersion !== this.currentVersion) {
+    if (versionChanged) {
       steps.push(`Update package.json version to ${this.newVersion}`);
       steps.push(`Commit version bump`);
     }
     
+    if (fromDev && !noPush) {
+      steps.push(`Push ${devBranch} to remote`);
+    }
+    
     steps.push(`Checkout ${mainBranch} branch`);
     steps.push(`Pull latest from ${mainBranch}`);
-    steps.push(`Merge ${devBranch} into ${mainBranch}`);
-    steps.push(`Push ${mainBranch} to remote`);
-    steps.push(`Create tag ${this.tagName}`);
+    
+    if (fromDev) {
+      steps.push(`Merge ${devBranch} into ${mainBranch}`);
+    }
+    
+    if (!noPush) {
+      steps.push(`Push ${mainBranch} to remote`);
+    }
     
     if (pushTag) {
-      steps.push(`Push tag ${this.tagName} to remote`);
+      steps.push(`Create tag ${this.tagName}`);
+      if (!noPush) {
+        steps.push(`Push tag ${this.tagName} to remote`);
+      }
     }
     
-    if (publish) {
-      steps.push(`Publish to npm`);
+    if (fromDev) {
+      steps.push(`Checkout ${devBranch} branch`);
     }
-    
-    steps.push(`Checkout ${devBranch} branch`);
     
     return steps;
   }
 
-  async executeRelease() {
-    const { devBranch, mainBranch, pushTag, publish } = this.config;
-    const originalBranch = git.getCurrentBranch();
+  async execute(versionChanged) {
+    const { devBranch, mainBranch, pushTag, noPush } = this.config;
+    const fromDev = this.originalBranch === devBranch;
     
     try {
-      if (this.newVersion !== this.currentVersion) {
-        console.log(chalk.blue(`Updating version to ${this.newVersion}...`));
+      if (versionChanged) {
+        console.log(`\x1b[36mUpdating version to ${this.newVersion}...\x1b[0m`);
         version.updatePackageVersion(this.packagePath, this.newVersion);
         
-        console.log(chalk.blue('Committing version bump...'));
+        console.log('\x1b[36mCommitting version bump...\x1b[0m');
         git.addFile('package.json');
         git.commit(`chore: bump version to ${this.newVersion}`);
       }
       
-      console.log(chalk.blue(`Checking out ${mainBranch}...`));
+      if (fromDev && !noPush) {
+        console.log(`\x1b[36mPushing ${devBranch} to remote...\x1b[0m`);
+        git.push(devBranch);
+      }
+      
+      console.log(`\x1b[36mChecking out ${mainBranch}...\x1b[0m`);
       git.checkout(mainBranch);
       
-      console.log(chalk.blue(`Pulling latest from ${mainBranch}...`));
+      console.log(`\x1b[36mPulling latest from ${mainBranch}...\x1b[0m`);
       git.pull(mainBranch);
       
-      console.log(chalk.blue(`Merging ${devBranch} into ${mainBranch}...`));
-      git.merge(devBranch);
+      if (fromDev) {
+        console.log(`\x1b[36mMerging ${devBranch} into ${mainBranch}...\x1b[0m`);
+        git.merge(devBranch);
+      }
       
-      console.log(chalk.blue(`Pushing ${mainBranch} to remote...`));
-      git.push(mainBranch);
-      
-      console.log(chalk.blue(`Creating tag ${this.tagName}...`));
-      git.createTag(this.tagName, `Version ${this.newVersion}`);
+      if (!noPush) {
+        console.log(`\x1b[36mPushing ${mainBranch} to remote...\x1b[0m`);
+        git.push(mainBranch);
+      }
       
       if (pushTag) {
-        console.log(chalk.blue(`Pushing tag ${this.tagName} to remote...`));
-        git.pushTag(this.tagName);
+        console.log(`\x1b[36mCreating tag ${this.tagName}...\x1b[0m`);
+        git.createTag(this.tagName, `Version ${this.newVersion || this.currentVersion}`);
+        
+        if (!noPush) {
+          console.log(`\x1b[36mPushing tag ${this.tagName} to remote...\x1b[0m`);
+          git.pushTag(this.tagName);
+        }
       }
       
-      if (publish) {
-        console.log(chalk.blue('Publishing to npm...'));
-        npm.publish();
+      if (fromDev) {
+        console.log(`\x1b[36mChecking out ${devBranch}...\x1b[0m`);
+        git.checkout(devBranch);
       }
       
-      console.log(chalk.blue(`Checking out ${devBranch}...`));
-      git.checkout(devBranch);
+      console.log(`\x1b[32m\x1b[1m\n✓ Completed successfully!\x1b[0m`);
       
-      console.log(chalk.green.bold(`\n✓ Release ${this.tagName} completed successfully!`));
-      
-      if (!pushTag) {
-        console.log(chalk.yellow(`\nNote: Tag ${this.tagName} was created locally but not pushed.`));
-        console.log(chalk.yellow(`Run 'git push origin ${this.tagName}' to push it manually.`));
+      if (pushTag && noPush) {
+        console.log(`\x1b[33m\nNote: Tag ${this.tagName} was created locally but not pushed.\x1b[0m`);
+        console.log(`\x1b[33mRun 'git push origin ${this.tagName}' to push it manually.\x1b[0m`);
       }
       
     } catch (error) {
-      console.log(chalk.red(`\n✗ Error during release: ${error.message}`));
-      console.log(chalk.yellow(`Returning to ${originalBranch}...`));
-      git.checkout(originalBranch);
+      console.log(`\x1b[31m\n✗ Error: ${error.message}\x1b[0m`);
+      console.log(`\x1b[33mReturning to ${this.originalBranch}...\x1b[0m`);
+      git.checkout(this.originalBranch);
       throw error;
     }
   }

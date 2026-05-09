@@ -23,6 +23,11 @@ function checkGitStatus() {
   }
 }
 
+function isStatusClear() {
+  const status = exec('git status --porcelain', { silent: true, ignoreError: true });
+  return !status || status.trim() === '';
+}
+
 function tagExists(tagName) {
   const result = exec(`git tag -l ${tagName}`, { silent: true, ignoreError: true });
   return result === tagName;
@@ -30,6 +35,10 @@ function tagExists(tagName) {
 
 function getCurrentBranch() {
   return exec('git rev-parse --abbrev-ref HEAD', { silent: true });
+}
+
+function isAllowedBranch(currentBranch, devBranch, mainBranch) {
+  return currentBranch === devBranch || currentBranch === mainBranch;
 }
 
 function checkout(branch) {
@@ -40,25 +49,20 @@ function pull(branch) {
   exec(`git pull origin ${branch}`);
 }
 
-function merge(branch) {
-  exec(`git merge ${branch}`);
-}
-
 function push(branch) {
   exec(`git push origin ${branch}`);
-}
-
-function createTag(tagName, message) {
-  exec(`git tag -a ${tagName} -m "${message}"`);
 }
 
 function pushTag(tagName) {
   exec(`git push origin ${tagName}`);
 }
 
-function commitAll(message) {
-  exec('git add -A');
-  exec(`git commit -m "${message}"`);
+function merge(branch) {
+  exec(`git merge ${branch}`);
+}
+
+function createTag(tagName, message) {
+  exec(`git tag -a ${tagName} -m "${message}"`);
 }
 
 function addFile(file) {
@@ -71,15 +75,16 @@ function commit(message) {
 
 export default {
   checkGitStatus,
+  isStatusClear,
   tagExists,
   getCurrentBranch,
+  isAllowedBranch,
   checkout,
   pull,
-  merge,
   push,
-  createTag,
   pushTag,
-  commitAll,
+  merge,
+  createTag,
   addFile,
   commit
 };

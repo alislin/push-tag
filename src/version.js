@@ -18,8 +18,7 @@ function bumpVersion(currentVersion, bumpType) {
   }
   
   if (['patch', 'minor', 'major'].includes(bumpType)) {
-    const newVersion = semver.inc(currentVersion, bumpType);
-    return newVersion;
+    return semver.inc(currentVersion, bumpType);
   }
   
   if (semver.valid(bumpType)) {
@@ -45,15 +44,17 @@ function resolveVersion(packagePath, versionInput) {
   const currentVersion = getCurrentVersion(packagePath);
   
   if (!versionInput) {
-    return currentVersion;
+    return { currentVersion, newVersion: null, changed: false };
   }
   
   if (['patch', 'minor', 'major'].includes(versionInput)) {
-    return bumpVersion(currentVersion, versionInput);
+    const newVersion = bumpVersion(currentVersion, versionInput);
+    return { currentVersion, newVersion, changed: newVersion !== currentVersion };
   }
   
   if (semver.valid(versionInput)) {
-    return semver.clean(versionInput);
+    const newVersion = semver.clean(versionInput);
+    return { currentVersion, newVersion, changed: newVersion !== currentVersion };
   }
   
   throw new Error(`Invalid version input: ${versionInput}`);

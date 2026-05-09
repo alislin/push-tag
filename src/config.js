@@ -6,7 +6,7 @@ const DEFAULT_CONFIG = {
   devBranch: null,
   mainBranch: null,
   pushTag: false,
-  publish: true
+  noPush: false
 };
 
 function detectDevBranch() {
