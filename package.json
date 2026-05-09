@@ -1,0 +1,41 @@
+{
+  "name": "push-tag",
+  "version": "1.0.0",
+  "description": "CLI tool for automatic version bumping, git tag creation and npm publishing",
+  "main": "src/index.js",
+  "bin": {
+    "vtag": "./bin/vtag.js"
+  },
+  "type": "module",
+  "files": [
+    "bin",
+    "src"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "vtag": "node bin/vtag.js",
+    "vtag:patch": "node bin/vtag.js -p",
+    "vtag:minor": "node bin/vtag.js -m",
+    "vtag:major": "node bin/vtag.js -M",
+    "vtag:dry": "node bin/vtag.js -p --dry-run",
+    "vtag:help": "node bin/vtag.js --help"
+  },
+  "keywords": [
+    "version",
+    "tag",
+    "release",
+    "npm",
+    "git",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.0.0",
+    "semver": "^7.6.0"
+  }
+}
