@@ -7,7 +7,8 @@ const DEFAULT_CONFIG = {
   mainBranch: null,
   pushTag: false,
   noPush: false,
-  preRelease: []
+  preRelease: [],
+  skipPre: false
 };
 
 function detectDevBranch() {
@@ -107,7 +108,8 @@ function initRcConfig(cwd) {
     mainBranch: null,
     pushTag: false,
     noPush: false,
-    preRelease: []
+    preRelease: [],
+    skipPre: false
   };
   
   writeFileSync(rcPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
@@ -136,7 +138,8 @@ function initPackageConfig(cwd) {
     mainBranch: null,
     pushTag: false,
     noPush: false,
-    preRelease: []
+    preRelease: [],
+    skipPre: false
   };
   
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');

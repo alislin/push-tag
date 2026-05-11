@@ -71,6 +71,7 @@ class Vtag {
     console.log(`  Main branch: ${this.config.mainBranch}`);
     console.log(`  Push tag: ${this.config.pushTag}`);
     console.log(`  No push: ${this.config.noPush}`);
+    console.log(`  Skip pre-release: ${this.config.skipPre}`);
     if (this.config.preRelease?.length) {
       console.log(`  Pre-release: ${this.config.preRelease.join(', ')}`);
     }

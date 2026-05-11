@@ -56,9 +56,12 @@ program
       dryRun: options.dryRun || false,
       devBranch: options.devBranch,
       mainBranch: options.mainBranch,
-      skipPre: options.skipPre || false,
-      preRelease: options.pre.length > 0 ? options.pre : undefined
+      skipPre: options.skipPre || false
     };
+    
+    if (options.pre.length > 0) {
+      config.preRelease = options.pre;
+    }
     
     try {
       const vtag = new Vtag(config);
