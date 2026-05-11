@@ -55,9 +55,12 @@ program
       noPush: options.noPush || false,
       dryRun: options.dryRun || false,
       devBranch: options.devBranch,
-      mainBranch: options.mainBranch,
-      skipPre: options.skipPre || false
+      mainBranch: options.mainBranch
     };
+    
+    if (options.skipPre) {
+      config.skipPre = true;
+    }
     
     if (options.pre.length > 0) {
       config.preRelease = options.pre;
