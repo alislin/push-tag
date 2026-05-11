@@ -3,6 +3,10 @@ import { program } from 'commander';
 import Vtag from '../src/index.js';
 import { initConfig } from '../src/config.js';
 
+function collect(value, previous) {
+  return previous.concat([value]);
+}
+
 program
   .name('vtag')
   .description('CLI tool for automatic version bumping, git branch merge and tag creation')
@@ -31,6 +35,8 @@ program
   .option('-d, --dry-run', 'preview without executing')
   .option('--dev-branch <name>', 'development branch name')
   .option('--main-branch <name>', 'main/production branch name')
+  .option('--skip-pre', 'skip pre-release commands')
+  .option('--pre <command>', 'override pre-release commands (can be used multiple times)', collect, [])
   .action(async (version, options) => {
     let bumpType = null;
     
@@ -49,7 +55,9 @@ program
       noPush: options.noPush || false,
       dryRun: options.dryRun || false,
       devBranch: options.devBranch,
-      mainBranch: options.mainBranch
+      mainBranch: options.mainBranch,
+      skipPre: options.skipPre || false,
+      preRelease: options.pre.length > 0 ? options.pre : undefined
     };
     
     try {

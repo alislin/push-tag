@@ -1,4 +1,5 @@
 import path from 'path';
+import { execSync } from 'child_process';
 import { loadConfig } from './config.js';
 import version from './version.js';
 import git from './git.js';
@@ -70,6 +71,9 @@ class Vtag {
     console.log(`  Main branch: ${this.config.mainBranch}`);
     console.log(`  Push tag: ${this.config.pushTag}`);
     console.log(`  No push: ${this.config.noPush}`);
+    if (this.config.preRelease?.length) {
+      console.log(`  Pre-release: ${this.config.preRelease.join(', ')}`);
+    }
     console.log('');
   }
 
@@ -81,10 +85,30 @@ class Vtag {
     });
   }
 
+  runPreReleaseCommands(location) {
+    if (this.config.skipPre || !this.config.preRelease?.length) {
+      return;
+    }
+    
+    console.log(`\x1b[1m[${location}] Running pre-release commands...\x1b[0m`);
+    
+    for (const cmd of this.config.preRelease) {
+      console.log(`\x1b[36m> ${cmd}\x1b[0m`);
+      try {
+        execSync(cmd, { stdio: 'inherit', cwd: this.cwd });
+        console.log('\x1b[32m✓ Passed\x1b[0m\n');
+      } catch (error) {
+        console.log(`\x1b[31m✗ Failed: ${cmd}\x1b[0m`);
+        throw new Error(`Pre-release command failed: ${cmd}`);
+      }
+    }
+  }
+
   getExecutionSteps(versionChanged) {
     const steps = [];
-    const { devBranch, mainBranch, pushTag, noPush } = this.config;
+    const { devBranch, mainBranch, pushTag, noPush, preRelease, skipPre } = this.config;
     const fromDev = this.originalBranch === devBranch;
+    const hasPreRelease = preRelease?.length && !skipPre;
     
     if (versionChanged) {
       steps.push(`Update package.json version to ${this.newVersion}`);
@@ -92,6 +116,9 @@ class Vtag {
     }
     
     if (fromDev && !noPush) {
+      if (hasPreRelease) {
+        preRelease.forEach(cmd => steps.push(`[dev] Run: ${cmd}`));
+      }
       steps.push(`Push ${devBranch} to remote`);
     }
     
@@ -100,6 +127,10 @@ class Vtag {
     
     if (fromDev) {
       steps.push(`Merge ${devBranch} into ${mainBranch}`);
+    }
+    
+    if (hasPreRelease) {
+      preRelease.forEach(cmd => steps.push(`[main] Run: ${cmd}`));
     }
     
     if (!noPush) {
@@ -135,6 +166,7 @@ class Vtag {
       }
       
       if (fromDev && !noPush) {
+        this.runPreReleaseCommands('dev');
         console.log(`\x1b[36mPushing ${devBranch} to remote...\x1b[0m`);
         git.push(devBranch);
       }
@@ -149,6 +181,8 @@ class Vtag {
         console.log(`\x1b[36mMerging ${devBranch} into ${mainBranch}...\x1b[0m`);
         git.merge(devBranch);
       }
+      
+      this.runPreReleaseCommands('main');
       
       if (!noPush) {
         console.log(`\x1b[36mPushing ${mainBranch} to remote...\x1b[0m`);
