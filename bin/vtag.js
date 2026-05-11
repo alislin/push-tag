@@ -1,11 +1,27 @@
 #!/usr/bin/env node
 import { program } from 'commander';
 import Vtag from '../src/index.js';
+import { initConfig } from '../src/config.js';
 
 program
   .name('vtag')
   .description('CLI tool for automatic version bumping, git branch merge and tag creation')
-  .version('1.0.0')
+  .version('1.0.0');
+
+program
+  .command('init')
+  .description('Initialize configuration file')
+  .option('-f, --file <type>', 'config file type: "rc" for .vttagrc.json, "package" for package.json', 'rc')
+  .action(async (options) => {
+    try {
+      initConfig(process.cwd(), options.file);
+    } catch (error) {
+      console.error(`\x1b[31mError: ${error.message}\x1b[0m`);
+      process.exit(1);
+    }
+  });
+
+program
   .argument('[version]', 'version bump type (patch/minor/major) or specific version number')
   .option('-p, --patch', 'bump patch version')
   .option('-m, --minor', 'bump minor version')
