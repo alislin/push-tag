@@ -1,14 +1,27 @@
 import { readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 import semver from 'semver';
+import dotnet from './dotnet-version.js';
 
-function getCurrentVersion(packagePath) {
+function getNpmVersion(packagePath) {
   try {
     const content = readFileSync(packagePath, 'utf8');
     const pkg = JSON.parse(content);
     return pkg.version;
   } catch (error) {
     throw new Error(`Failed to read package.json: ${error.message}`);
+  }
+}
+
+function updateNpmVersion(packagePath, newVersion) {
+  try {
+    const content = readFileSync(packagePath, 'utf8');
+    const pkg = JSON.parse(content);
+    pkg.version = newVersion;
+    writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+    return true;
+  } catch (error) {
+    throw new Error(`Failed to update package.json: ${error.message}`);
   }
 }
 
@@ -28,20 +41,22 @@ function bumpVersion(currentVersion, bumpType) {
   throw new Error(`Invalid version bump type: ${bumpType}`);
 }
 
-function updatePackageVersion(packagePath, newVersion) {
-  try {
-    const content = readFileSync(packagePath, 'utf8');
-    const pkg = JSON.parse(content);
-    pkg.version = newVersion;
-    writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
-    return true;
-  } catch (error) {
-    throw new Error(`Failed to update package.json: ${error.message}`);
+function getCurrentVersion(manifestPath, projectType) {
+  if (projectType === 'dotnet') {
+    return dotnet.getCurrentVersion(manifestPath);
   }
+  return getNpmVersion(manifestPath);
 }
 
-function resolveVersion(packagePath, versionInput) {
-  const currentVersion = getCurrentVersion(packagePath);
+function updateManifestVersion(manifestPath, newVersion, projectType) {
+  if (projectType === 'dotnet') {
+    return dotnet.updateVersion(manifestPath, newVersion);
+  }
+  return updateNpmVersion(manifestPath, newVersion);
+}
+
+function resolveVersion(manifestPath, versionInput, projectType) {
+  const currentVersion = getCurrentVersion(manifestPath, projectType);
   
   if (!versionInput) {
     return { currentVersion, newVersion: null, changed: false };
@@ -63,6 +78,6 @@ function resolveVersion(packagePath, versionInput) {
 export default {
   getCurrentVersion,
   bumpVersion,
-  updatePackageVersion,
+  updateManifestVersion,
   resolveVersion
 };

@@ -1,47 +1,62 @@
 import path from 'path';
 import { execSync } from 'child_process';
-import { loadConfig } from './config.js';
+import { loadConfig, saveConfig } from './config.js';
 import version from './version.js';
 import git from './git.js';
+import { detectProjects, selectConfiguredProject, findDirBuildProps } from './detector.js';
+import { displayProjectTable, selectProject } from './prompt.js';
 
 class Vtag {
   constructor(cliOptions = {}) {
     this.cwd = process.cwd();
-    this.packagePath = path.join(this.cwd, 'package.json');
     this.cliOptions = cliOptions;
     this.config = null;
     this.currentVersion = null;
     this.newVersion = null;
     this.tagName = null;
     this.originalBranch = null;
+    this.projectType = null;
+    this.versionFile = null;
+    this.manifestPath = null;
+    this.manifestFiles = [];
+    this.selectedProject = null;
   }
 
   async run() {
     this.config = loadConfig(this.cwd, this.cliOptions);
-    
+
     if (this.config.dryRun) {
       console.log('\x1b[33m🔍 DRY RUN MODE - No changes will be made\x1b[0m\n');
     }
-    
-    this.printConfig();
-    
+
+    const projects = detectProjects(this.cwd);
+
+    if (projects.length === 0) {
+      console.log('\x1b[31mNo supported project found (package.json or .csproj)\x1b[0m');
+      process.exit(1);
+    }
+
+    await this.resolveProject(projects);
+
     this.originalBranch = git.getCurrentBranch();
-    
+    this.printConfig();
+
     if (!git.isAllowedBranch(this.originalBranch, this.config.devBranch, this.config.mainBranch)) {
       console.log(`\x1b[31m当前分支 '${this.originalBranch}' 不合法，请在 '${this.config.devBranch}' 或 '${this.config.mainBranch}' 分支执行此命令\x1b[0m`);
       process.exit(1);
     }
-    
+
     if (!git.isStatusClear()) {
       console.log(`\x1b[31m当前分支 '${this.originalBranch}' 有未提交的更改，请先提交或暂存后再执行\x1b[0m`);
       process.exit(1);
     }
-    
-    const versionInfo = version.resolveVersion(this.packagePath, this.config.version);
+
+    const versionInfo = version.resolveVersion(this.versionFile, this.config.version, this.projectType);
     this.currentVersion = versionInfo.currentVersion;
     this.newVersion = versionInfo.newVersion;
     this.tagName = `v${this.newVersion || this.currentVersion}`;
-    
+
+    console.log(`\x1b[36mProject: ${this.selectedProject.name} (${this.selectedProject.type})\x1b[0m`);
     console.log(`\x1b[36mCurrent version: ${this.currentVersion}\x1b[0m`);
     if (versionInfo.changed) {
       console.log(`\x1b[32mNew version: ${this.newVersion}\x1b[0m`);
@@ -50,18 +65,99 @@ class Vtag {
       console.log(`\x1b[36mTag: ${this.tagName}\x1b[0m`);
     }
     console.log('');
-    
+
     if (this.config.pushTag && git.tagExists(this.tagName)) {
       console.log(`\x1b[31mTag '${this.tagName}' 已存在\x1b[0m`);
       process.exit(1);
     }
-    
+
     if (this.config.dryRun) {
       this.printDryRunSteps(versionInfo.changed);
       return;
     }
-    
+
     await this.execute(versionInfo.changed);
+  }
+
+  async resolveProject(projects) {
+    const { projectType, manifestPath } = this.config;
+    const selectMode = this.cliOptions.select;
+
+    if (!selectMode && manifestPath) {
+      const configured = selectConfiguredProject(projects, this.config);
+      if (configured) {
+        this.setProject(configured);
+        return;
+      }
+      console.log(`\x1b[33mConfigured manifest '${manifestPath}' not found, re-selecting...\x1b[0m\n`);
+    }
+
+    if (projects.length === 1) {
+      this.setProject(projects[0]);
+      if (!manifestPath) {
+        saveConfig(this.cwd, {
+          projectType: projects[0].type,
+          manifestPath: projects[0].manifestPath
+        });
+      }
+      return;
+    }
+
+    if (!selectMode && !manifestPath) {
+      const dirBuildProps = findDirBuildProps(projects);
+      if (dirBuildProps) {
+        this.setProject(dirBuildProps);
+        return;
+      }
+    }
+
+    const bumpType = this.getBumpType();
+    const newVersions = projects.map(p => {
+      if (!bumpType || !p.version) return null;
+      try {
+        return version.bumpVersion(p.version, bumpType);
+      } catch {
+        return null;
+      }
+    });
+
+    displayProjectTable(projects, -1, newVersions);
+
+    const index = await selectProject(projects);
+    if (index < 0) {
+      console.log('\x1b[31mNo project selected, aborting\x1b[0m');
+      process.exit(1);
+    }
+
+    const selected = projects[index];
+    this.setProject(selected);
+    saveConfig(this.cwd, {
+      projectType: selected.type,
+      manifestPath: selected.manifestPath
+    });
+  }
+
+  setProject(project) {
+    this.selectedProject = project;
+    this.projectType = project.type;
+    this.manifestPath = path.join(this.cwd, project.manifestPath);
+    this.versionFile = path.join(this.cwd, project.versionFile);
+    this.manifestFiles = [];
+
+    const fileSet = new Set([project.manifestPath, project.versionFile]);
+    fileSet.forEach(f => this.manifestFiles.push(f));
+
+    console.log(`\x1b[32m✓ Selected project: ${project.name} (${project.manifestPath})\x1b[0m`);
+    if (project.versionFile !== project.manifestPath) {
+      console.log(`\x1b[33m  ↳ Version source: ${project.versionFile}\x1b[0m`);
+    }
+    console.log('');
+  }
+
+  getBumpType() {
+    const v = this.config.version;
+    if (v && ['patch', 'minor', 'major'].includes(v)) return v;
+    return null;
   }
 
   printConfig() {
@@ -110,9 +206,10 @@ class Vtag {
     const { devBranch, mainBranch, pushTag, noPush, preRelease, skipPre } = this.config;
     const fromDev = this.originalBranch === devBranch;
     const hasPreRelease = preRelease?.length && !skipPre;
+    const versionBasename = path.basename(this.versionFile);
     
     if (versionChanged) {
-      steps.push(`Update package.json version to ${this.newVersion}`);
+      steps.push(`Update ${versionBasename} version to ${this.newVersion}`);
       steps.push(`Commit version bump`);
     }
     
@@ -159,10 +256,12 @@ class Vtag {
     try {
       if (versionChanged) {
         console.log(`\x1b[36mUpdating version to ${this.newVersion}...\x1b[0m`);
-        version.updatePackageVersion(this.packagePath, this.newVersion);
+        version.updateManifestVersion(this.versionFile, this.newVersion, this.projectType);
         
         console.log('\x1b[36mCommitting version bump...\x1b[0m');
-        git.addFile('package.json');
+        for (const file of this.manifestFiles) {
+          git.addFile(file);
+        }
         git.commit(`chore: bump version to ${this.newVersion}`);
       }
       

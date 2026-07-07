@@ -8,7 +8,9 @@ const DEFAULT_CONFIG = {
   pushTag: false,
   noPush: false,
   preRelease: [],
-  skipPre: false
+  skipPre: false,
+  projectType: null,
+  manifestPath: null
 };
 
 function detectDevBranch() {
@@ -95,6 +97,24 @@ export function initConfig(cwd = process.cwd(), fileType = 'rc') {
   }
 }
 
+export function saveConfig(cwd, updates) {
+  const rcPath = path.join(cwd, '.vttagrc.json');
+  let config = {};
+
+  if (existsSync(rcPath)) {
+    try {
+      config = JSON.parse(readFileSync(rcPath, 'utf8'));
+    } catch {}
+  }
+
+  Object.assign(config, updates);
+
+  writeFileSync(rcPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+  console.log(`\x1b[32m✓ Saved config to .vttagrc.json\x1b[0m`);
+
+  addToGitignore(cwd, '.vttagrc.json');
+}
+
 function initRcConfig(cwd) {
   const rcPath = path.join(cwd, '.vttagrc.json');
   
@@ -109,7 +129,9 @@ function initRcConfig(cwd) {
     pushTag: false,
     noPush: false,
     preRelease: [],
-    skipPre: false
+    skipPre: false,
+    projectType: null,
+    manifestPath: null
   };
   
   writeFileSync(rcPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
@@ -139,7 +161,9 @@ function initPackageConfig(cwd) {
     pushTag: false,
     noPush: false,
     preRelease: [],
-    skipPre: false
+    skipPre: false,
+    projectType: null,
+    manifestPath: null
   };
   
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
@@ -167,4 +191,4 @@ function addToGitignore(cwd, entry) {
   console.log(`\x1b[32m✓ Added ${entry} to .gitignore\x1b[0m`);
 }
 
-export default { loadConfig, initConfig };
+export default { loadConfig, initConfig, saveConfig };

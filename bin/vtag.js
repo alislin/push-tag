@@ -37,6 +37,7 @@ program
   .option('--main-branch <name>', 'main/production branch name')
   .option('--skip-pre', 'skip pre-release commands')
   .option('--pre <command>', 'override pre-release commands (can be used multiple times)', collect, [])
+  .option('--select', 're-select project from detected list')
   .action(async (version, options) => {
     let bumpType = null;
     
@@ -55,7 +56,8 @@ program
       noPush: options.noPush || false,
       dryRun: options.dryRun || false,
       devBranch: options.devBranch,
-      mainBranch: options.mainBranch
+      mainBranch: options.mainBranch,
+      select: options.select || false
     };
     
     if (options.skipPre) {
